@@ -13,7 +13,7 @@ window.LG_CONFIG = {
 window.LG_SUBSCRIBE_CONFIG = window.LG_CONFIG;
 window.APP_CONFIG = window.LG_CONFIG;
 
-try{const ss=JSON.parse(sessionStorage.getItem("lgAdminSession")||"null");if(ss&&ss.token){token=ss.token;refreshToken=ss.refreshToken||"";tokenExpiresAt=Number(ss.tokenExpiresAt)||0;}}catch(_){}
+try{const ss=JSON.parse(localStorage.getItem("lgAdminSession")||"null");if(ss&&ss.token){token=ss.token;refreshToken=ss.refreshToken||"";tokenExpiresAt=Number(ss.tokenExpiresAt)||0;}}catch(_){}
 </script>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LG Subscribe Admin V26</title>
@@ -308,7 +308,7 @@ async function refreshAdminToken(){
     const d=await r.json();
     if(!r.ok||!d.access_token) return false;
     token=d.access_token;refreshToken=d.refresh_token||refreshToken;tokenExpiresAt=Date.now()+((Number(d.expires_in)||3600)-60)*1000;
-    try{sessionStorage.setItem("lgAdminSession",JSON.stringify({token,refreshToken,tokenExpiresAt}))}catch(_){}
+    try{localStorage.setItem("lgAdminSession",JSON.stringify({token,refreshToken,tokenExpiresAt}))}catch(_){}
     return true;
   }catch(e){return false}
 }
@@ -328,7 +328,7 @@ async function authFetch(url,options={}){
   }
   return r;
 }
-async function login(){if(!apiReady()){q("loginMsg").textContent="ระบบเชื่อมต่อยังไม่พร้อม";return}const email=(q("email").value||"").trim();const password=q("password").value||"";if(!email||!password){q("loginMsg").textContent="กรุณากรอกอีเมลและรหัสผ่าน Admin";return}q("loginMsg").textContent="กำลังเข้าสู่ระบบ…";try{const r=await fetch(cfg.SUPABASE_URL+"/auth/v1/token?grant_type=password",{method:"POST",headers:{apikey:cfg.SUPABASE_ANON_KEY,"Content-Type":"application/json"},body:JSON.stringify({email,password})});const d=await r.json();if(!r.ok){q("loginMsg").textContent=(d.error_description||d.msg||d.error||"เข้าสู่ระบบไม่สำเร็จ")+" • ใช้รหัสผ่าน Admin ที่ตั้งไว้กับระบบ ไม่ใช่รหัสผ่าน Gmail";return}token=d.access_token||"";refreshToken=d.refresh_token||"";tokenExpiresAt=Date.now()+((Number(d.expires_in)||3600)-60)*1000;if(!token){q("loginMsg").textContent="เข้าสู่ระบบไม่สำเร็จ: ไม่ได้รับสิทธิ์ใช้งาน";return}try{sessionStorage.setItem("lgAdminSession",JSON.stringify({token,refreshToken,tokenExpiresAt}))}catch(_){}showApp();await loadRemote()}catch(e){q("loginMsg").textContent="เชื่อมต่อระบบไม่ได้ กรุณาเปิดผ่าน Chrome และลองอีกครั้ง"}}
+async function login(){if(!apiReady()){q("loginMsg").textContent="ระบบเชื่อมต่อยังไม่พร้อม";return}const email=(q("email").value||"").trim();const password=q("password").value||"";if(!email||!password){q("loginMsg").textContent="กรุณากรอกอีเมลและรหัสผ่าน Admin";return}q("loginMsg").textContent="กำลังเข้าสู่ระบบ…";try{const r=await fetch(cfg.SUPABASE_URL+"/auth/v1/token?grant_type=password",{method:"POST",headers:{apikey:cfg.SUPABASE_ANON_KEY,"Content-Type":"application/json"},body:JSON.stringify({email,password})});const d=await r.json();if(!r.ok){q("loginMsg").textContent=(d.error_description||d.msg||d.error||"เข้าสู่ระบบไม่สำเร็จ")+" • ใช้รหัสผ่าน Admin ที่ตั้งไว้กับระบบ ไม่ใช่รหัสผ่าน Gmail";return}token=d.access_token||"";refreshToken=d.refresh_token||"";tokenExpiresAt=Date.now()+((Number(d.expires_in)||3600)-60)*1000;if(!token){q("loginMsg").textContent="เข้าสู่ระบบไม่สำเร็จ: ไม่ได้รับสิทธิ์ใช้งาน";return}try{localStorage.setItem("lgAdminSession",JSON.stringify({token,refreshToken,tokenExpiresAt}))}catch(_){}showApp();await loadRemote()}catch(e){q("loginMsg").textContent="เชื่อมต่อระบบไม่ได้ กรุณาเปิดผ่าน Chrome และลองอีกครั้ง"}}
 function syncModelFieldMode(){const m=q("model");if(m){m.readOnly=false;m.disabled=false;m.style.background="#fff"}}
 async function demo(){demoMode=true;await demoLoadProducts();showApp()} function showApp(){q("loginBox").classList.add("hidden");q("adminApp").classList.remove("hidden");refresh();loadSelected();syncModelFieldMode();loadSiteContent().then(loadSiteContentToForm)}
 
@@ -577,7 +577,7 @@ async function uploadSiteImage(file,inputId,previewId){
   }
 }
 
-function logout(){location.reload()}
+function logout(){try{localStorage.removeItem("lgAdminSession")}catch(_){} token="";refreshToken="";tokenExpiresAt=0;location.reload()}
 function canonicalModelKey(v){return String(v||"").trim().toUpperCase()}
 async function loadRemote(){
   try{
@@ -708,10 +708,11 @@ async function uploadProductCareImage(file){
   }
 }
 function loadSelected(){idx=Number(q("sel").value)||0;const p=PRODUCTS[idx];q("name").value=p.name||"";q("model").value=p.model||"";q("model").dataset.originalModel=p.model||"";q("category").value=p.category||p.cat||"";q("features").value=(p.features||[]).join("\n");const c=p._care||{};q("productCareTitle").value=c.title||"";q("productCareVisit").value=careRowsToText(c.visit);q("productCareSelf").value=careRowsToText(c.self);q("productCareNote").value=c.note||"";q("productCareImage").value=c.image||"";q("productCarePreview").src=c.image||"";q("note").value=p.note||p.promo||"";setPromoUI(Number(p.promoPercent)||0,!!p.promoEnabled);q("cashPrice").value=p.cashPrice??"";q("cashNote").value=p.cashNote||"";q("cashEnabled").checked=!!p.cashEnabled;q("img").value=p.img||"";q("preview").style.display="";q("preview").onerror=function(){productImgError(this,p.model)};q("preview").src=getProductImage(p);q("selThumb").style.display="";q("selThumb").onerror=function(){productImgError(this,p.model)};q("selThumb").src=getProductImage(p);q("selModel").textContent=p.model||"NEW";q("selName").textContent=p.name||"";updateProductPickerButton();renderPlans();renderGallery()}
-function row(o={}){return `<div class="plan"><div><label>สัญญา</label><input class="pl" value="${o.label||""}"></div><div><label>บริการ</label><input class="ps" value="${o.service||""}"></div><div><label>บาท/เดือน</label><input class="pp" value="${o.price??""}"></div><div><label>งวด</label><input class="pm" value="${o.months??60}"></div><div><label>วันทำรายการ</label><input class="pf" value="${o.firstPayment??0}"></div><div><label>50% กี่งวด</label><input class="ph" value="${o.halfCycles??0}"></div><button class="danger" onclick="this.parentElement.remove()">ลบ</button></div>`}
-function renderPlans(){q("plans").innerHTML=((PRODUCTS[idx].options||[]).length?PRODUCTS[idx].options:[{label:"5 ปี",service:"Visit Service",price:0,months:60,firstPayment:149,halfCycles:0}]).map(row).join("")}
-function collectPlans(){return [...document.querySelectorAll(".plan")].map(r=>({label:r.querySelector(".pl").value,service:r.querySelector(".ps").value,price:Number(r.querySelector(".pp").value)||0,months:Number(r.querySelector(".pm").value)||60,firstPayment:Number(r.querySelector(".pf").value)||0,halfCycles:Number(r.querySelector(".ph").value)||0}))}
-function addPlan(){q("plans").insertAdjacentHTML("beforeend",row({label:"7 ปี",service:"Self Service",price:0,months:84,firstPayment:149,halfCycles:0}))}
+function defaultBillingStart(pOrCat=""){const p=(pOrCat&&typeof pOrCat==="object")?pOrCat:null;const s=p?[p.category,p.cat,p.name,p.model].filter(Boolean).join(" "):String(pOrCat||"");return /(ทีวี|โทรทัศน์|oled|qned|nano(cell)?|smart\s*tv|\btv\b|จอมอนิเตอร์|มอนิเตอร์|monitor|ultrafine|ultragear|sound\s*bar|soundbar|ซาวด์บาร์|ลำโพง|speaker|xboom|life\s*style|lifestyle|standbyme|stanbyme|จอ\s*life)/i.test(s)?1:2}
+function row(o={}){const product=PRODUCTS[idx]||{};const bs=defaultBillingStart(product)===1?1:Number(o.startBilling||2);return `<div class="plan"><div><label>สัญญา</label><input class="pl" value="${o.label||""}"></div><div><label>บริการ</label><input class="ps" value="${o.service||""}"></div><div><label>บาท/เดือน</label><input class="pp" value="${o.price??""}"></div><div><label>งวด</label><input class="pm" value="${o.months??60}"></div><div><label>วันทำรายการ</label><input class="pf" value="${o.firstPayment??0}"></div><div><label>เริ่มเก็บงวด</label><select class="pb"><option value="1" ${bs===1?"selected":""}>งวดที่ 1</option><option value="2" ${bs===2?"selected":""}>งวดที่ 2</option></select></div><div><label>50% กี่งวด</label><input class="ph" value="${o.halfCycles??0}"></div><button class="danger" onclick="this.parentElement.remove()">ลบ</button></div>`}
+function renderPlans(){q("plans").innerHTML=((PRODUCTS[idx].options||[]).length?PRODUCTS[idx].options:[{label:"5 ปี",service:"Visit Service",price:0,months:60,firstPayment:149,startBilling:defaultBillingStart(PRODUCTS[idx]),halfCycles:0}]).map(row).join("")}
+function collectPlans(){return [...document.querySelectorAll(".plan")].map(r=>({label:r.querySelector(".pl").value,service:r.querySelector(".ps").value,price:Number(r.querySelector(".pp").value)||0,months:Number(r.querySelector(".pm").value)||60,firstPayment:Number(r.querySelector(".pf").value)||0,startBilling:defaultBillingStart({...PRODUCTS[idx],category:q("category")?.value,cat:q("category")?.value,name:q("name")?.value,model:q("model")?.value})===1?1:(Number(r.querySelector(".pb")?.value)||2),halfCycles:Number(r.querySelector(".ph").value)||0}))}
+function addPlan(){q("plans").insertAdjacentHTML("beforeend",row({label:"7 ปี",service:"Self Service",price:0,months:84,firstPayment:149,startBilling:defaultBillingStart({...PRODUCTS[idx],category:q("category")?.value,cat:q("category")?.value,name:q("name")?.value,model:q("model")?.value}),halfCycles:0}))}
 function capture(){const p=PRODUCTS[idx];p.name=q("name").value.trim();p.model=q("model").value.trim();p.category=q("category").value.trim();p.cat=p.category;p.features=q("features").value.split("\n").map(x=>x.trim()).filter(Boolean);p._care={title:q("productCareTitle").value.trim(),visit:textToCareRows(q("productCareVisit").value),self:textToCareRows(q("productCareSelf").value),note:q("productCareNote").value.trim(),image:q("productCareImage").value.trim()};p.note=q("note").value.trim();p.promoPercent=getPromoPercent();p.promoEnabled=q("promoEnabled").checked;p.cashPrice=Number((q("cashPrice").value||"").replace(/,/g,""))||0;p.cashNote=q("cashNote").value.trim();p.cashEnabled=q("cashEnabled").checked;p.img=q("img").value.trim();p.options=collectPlans()}
 async function syncPublishedSnapshot(){
   if(demoMode||!apiReady()||!token) return true;
@@ -809,7 +810,7 @@ async function deleteProduct(){
 }
 async function upsert(p){const id=String(p.model||"").trim();return authFetch(cfg.SUPABASE_URL+"/rest/v1/products?on_conflict=id",{method:"POST",headers:{"Content-Type":"application/json",Prefer:"resolution=merge-duplicates"},body:JSON.stringify({id:id,data:p,updated_at:new Date().toISOString()})})}
 async function publishAll(){try{capture();captureSiteContent();if(demoMode){await demoSaveProducts();await localSaveSiteContent();alert("บันทึกข้อมูลทั้งหมดแล้ว (โหมดทดลอง)");return}for(const p of PRODUCTS){const r=await upsert(p);if(!r.ok)throw new Error("เผยแพร่ไม่สำเร็จที่รุ่น "+(p.model||""))}const sr=await upsert({model:"__SITE_CONTENT__",siteContent:SITE_CONTENT});if(!sr.ok)throw new Error("เผยแพร่ข้อมูลหน้าเว็บไม่สำเร็จ");await localSaveSiteContent();await syncPublishedSnapshot();alert("เผยแพร่ทั้งหมดและซิงก์หน้าลูกค้าแล้ว ✓")}catch(e){console.error(e);alert("บันทึกไม่สำเร็จ: "+(e&&e.message?e.message:e))}}
-function newProduct(){capture();PRODUCTS.push({name:"สินค้าใหม่",model:"NEW-MODEL-"+Date.now(),category:"อื่น ๆ",features:[],gallery:[],promoPercent:0,promoEnabled:false,cashPrice:0,cashNote:"",cashEnabled:false,options:[{label:"5 ปี",service:"Visit Service",price:0,months:60,firstPayment:149,halfCycles:0}]});idx=PRODUCTS.length-1;refresh();loadSelected();syncModelFieldMode();if(q("model"))q("model").focus()}
+function newProduct(){capture();PRODUCTS.push({name:"สินค้าใหม่",model:"NEW-MODEL-"+Date.now(),category:"อื่น ๆ",features:[],gallery:[],promoPercent:0,promoEnabled:false,cashPrice:0,cashNote:"",cashEnabled:false,options:[{label:"5 ปี",service:"Visit Service",price:0,months:60,firstPayment:149,startBilling:2,halfCycles:0}]});idx=PRODUCTS.length-1;refresh();loadSelected();syncModelFieldMode();if(q("model"))q("model").focus()}
 function fileData(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file)})}
 async function uploadMain(file){if(!file)return;if(demoMode||!apiReady()){const u=await fileData(file);q("img").value=u;q("preview").src=u;q("selThumb").src=u;return}const u=await uploadStorage(file);q("img").value=u;q("preview").src=u;q("selThumb").src=u}
 async function uploadGallery(files){const p=PRODUCTS[idx];p.gallery=p.gallery||[];for(const f of files){p.gallery.push((demoMode||!apiReady())?await fileData(f):await uploadStorage(f))}renderGallery()}
@@ -817,4 +818,13 @@ async function uploadStorage(file){const path=(PRODUCTS[idx].model||"product").r
 function renderGallery(){const g=PRODUCTS[idx].gallery||[];q("gallery").innerHTML=g.map((u,i)=>`<div style="display:flex;gap:8px;align-items:center;margin:7px 0"><img src="${u}" style="width:68px;height:68px;object-fit:contain;border:1px solid #eee;border-radius:8px"><button class="danger" onclick="PRODUCTS[idx].gallery.splice(${i},1);renderGallery()">ลบ</button></div>`).join("")}
 function exportJSON(){capture();const b=new Blob([JSON.stringify({products:PRODUCTS},null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="LG_Subscribe_V24_backup.json";a.click()}
 document.addEventListener("keydown",e=>{if(e.key==="Escape")closeProductPicker()});
+// จำการเข้าสู่ระบบข้ามการพักหน้าจอ/สลับแอป และต่ออายุ session อัตโนมัติ
+(async function restoreAdminLogin(){
+  if(!token||!refreshToken) return;
+  try{
+    if(!await ensureAdminToken()) return;
+    showApp();
+    await loadRemote();
+  }catch(e){console.warn("restoreAdminLogin",e)}
+})();
 </script></body></html>
