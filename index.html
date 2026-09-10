@@ -169,7 +169,25 @@ function defaultBillingStart(pOrCat=""){return isFirstInstallmentGroup(pOrCat)?1
 function normalizeBillingStart(p){if(!p)return p;if(Array.isArray(p.options)&&isFirstInstallmentGroup(p))p.options=p.options.map(o=>({...o,startBilling:1}));return p}
 PRODUCTS=PRODUCTS.map(normalizeBillingStart);
 function billingStart(o,p=currentProduct){if(isFirstInstallmentGroup(p))return 1;return Math.max(1,Math.min(2,Number(o?.startBilling)||2))}
-function payment(o,m,p=currentProduct){const forcedFirst=isFirstInstallmentGroup(p);const start=forcedFirst?1:billingStart(o,p);const end=months(o);if(m<start||m>end)return 0;if(half(o)>0&&m>=start&&m<start+half(o))return Number(o.price||0)*.5;return Number(o.price||0)}
+function payment(o,m,p=currentProduct){
+  const forcedFirst=isFirstInstallmentGroup(p);
+  const start=forcedFirst?1:billingStart(o,p);
+  const end=months(o);
+  if(m<start||m>end)return 0;
+
+  const tiers=Array.isArray(o?.paymentTiers)?[...o.paymentTiers].sort((a,b)=>Number(a?.from||0)-Number(b?.from||0)):[];
+  for(const t of tiers){
+    const from=Math.max(start,Number(t?.from||start));
+    const to=Math.min(end,Number(t?.to||end));
+    if(m>=from&&m<=to)return Math.max(0,Number(t?.amount||0));
+  }
+
+  if(m===2&&o?.secondPayment!==undefined&&o?.secondPayment!==null&&String(o.secondPayment).trim()!==""){
+    return Math.max(0,Number(o.secondPayment)||0);
+  }
+  if(half(o)>0&&m>=start&&m<start+half(o))return Number(o.price||0)*.5;
+  return Number(o.price||0);
+}
 function normalizePromoRules(p={},type=CUSTOMER_TYPE){let rules;if(type==="returning")rules=Array.isArray(p.returningCustomerRules)?p.returningCustomerRules:[];else rules=Array.isArray(p.newCustomerRules)?p.newCustomerRules:(Array.isArray(p.rules)?p.rules:[]);if(!rules.length&&Number(p.discountPercent||0)>0){rules=[{minQty:type==="returning"?1:Math.max(2,Number(p.minQty||2)),discountPercent:Number(p.discountPercent||0)}]}return rules.map(r=>({minQty:Math.max(type==="returning"?1:2,Math.floor(Number(r.minQty||1))),discountPercent:Math.max(0,Math.min(100,Number(r.discountPercent||0)))})).filter(r=>r.discountPercent>0).sort((a,b)=>a.minQty-b.minQty)}
 function promoConfig(qty=CART.length){const p=SITE_CONTENT?.promotion||DEFAULT_SITE_CONTENT.promotion||{},rules=normalizePromoRules(p,CUSTOMER_TYPE),q=Math.max(0,Number(qty||0));let chosen=null;for(const r of rules){if(q>=r.minQty)chosen=r}const first=rules[0]||{minQty:CUSTOMER_TYPE==="returning"?1:2,discountPercent:0};return {enabled:!!chosen,minQty:chosen?chosen.minQty:first.minQty,discountPercent:chosen?chosen.discountPercent:0,nextMinQty:chosen?null:first.minQty,rules,label:p.label||"โปรโมชั่นพิเศษ",customerType:CUSTOMER_TYPE}}
 function promoEligible(qty=CART.length){const p=promoConfig(qty);return p.discountPercent>0}
@@ -180,9 +198,18 @@ function paymentPromo(o,m,eligible=promoEligible(),p=currentProduct){
   if(!eligible || a<=0) return a;
   const pct=Math.max(0,Number(promoConfig().discountPercent||0))/100;
   if(pct<=0) return a;
+
   const start=billingStart(o,p);
-  // วันทำรายการเก็บเต็ม และไม่ยกส่วนลดของวันทำรายการไปหักในงวดแรก
-  // ทุกงวดที่มีการเรียกเก็บ ลดเฉพาะยอดปกติของงวดนั้นตามโปรโมชั่น
+
+  // กรณีสินค้าที่เริ่มเรียกเก็บจริงที่งวด 2:
+  // วันทำรายการชำระเต็มก่อน แต่สิทธิ์ส่วนลด Combo ของวันทำรายการ
+  // จะนำไปรวมลดเพิ่มในงวด 2
+  if(m===2 && start===2){
+    const dayAmount=Math.max(0,Number(firstPay(o)||0));
+    return Math.max(0,a-((a+dayAmount)*pct));
+  }
+
+  // สินค้าที่เริ่มเก็บงวด 1 และงวดอื่น ๆ ลดเฉพาะยอดของงวดนั้น
   return Math.max(0,a-(a*pct));
 }
 
@@ -353,6 +380,28 @@ function addCurrent(){const o=(currentProduct.options||[])[currentPlan];if(!o)re
 function quickAdd(model){const p=PRODUCTS.find(x=>x.model===model);if(!p)return;CART.push({model,plan:lowestIndex(p)});saveCart();toggleCart(true)}
 function saveCart(){localStorage.setItem("lgSubscribeCartV24",JSON.stringify(CART));renderCart()}
 function toggleCart(force){const el=document.getElementById("cart");if(force===true)el.classList.add("show");else el.classList.toggle("show");renderCart()}
+
+function continueShopping(){
+  // ปิดตะกร้าทุกรูปแบบที่หน้าเว็บนี้อาจใช้อยู่
+  document.querySelectorAll('.cartDrawer,.cart-drawer,#cartDrawer,#cart,#cartPanel,.drawer,.modal.open,.sheet.open').forEach(el=>{
+    el.classList.remove('open','show','active');
+    if(el.matches('.modal,.sheet')) el.style.display='none';
+  });
+  document.body.classList.remove('cart-open','no-scroll','modal-open');
+  document.body.style.overflow='';
+
+  // ปิดรายละเอียดสินค้าถ้ายังเปิดค้าง
+  document.querySelectorAll('.modal.open,.productModal.open,#productModal.open').forEach(el=>el.classList.remove('open','show','active'));
+
+  // กลับไปยังรายการสินค้า
+  const target=document.querySelector('#products,#productGrid,.products,.product-grid,[data-products],main');
+  if(target){
+    target.scrollIntoView({behavior:'smooth',block:'start'});
+  }else{
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+}
+
 function cartPaymentTable(){
   if(!CART.length)return "";
   const promo=promoConfig(), eligible=promoEligible();
@@ -360,7 +409,7 @@ function cartPaymentTable(){
   if(!items.length)return "";
   const maxM=Math.max(...items.map(x=>months(x.o)));
   const rowAt=(m)=>items.map(x=>{const a=payment(x.o,m,x.p),b=paymentPromo(x.o,m,eligible,x.p);return {a,b,d:Math.max(0,a-b),start:billingStart(x.o,x.p)}});
-  const sig=(m)=>rowAt(m).map(v=>`${v.a.toFixed(4)}|${v.b.toFixed(4)}`).join("||");
+  const sig=(m)=>((m===2?"__MONTH2__":"")+(rowAt(m).map(v=>`${v.a.toFixed(4)}|${v.b.toFixed(4)}`).join("||")));
   let groups=[];
   if(maxM){let st=1,prev=sig(1);for(let m=2;m<=maxM+1;m++){const cur=m<=maxM?sig(m):null;if(cur!==prev){groups.push({s:st,e:m-1,vals:rowAt(st)});st=m;prev=cur}}}
   const shortName=(p)=>{let n=String(p.name||p.model||"").replace(/^LG\s+/i,"");return n.length>28?n.slice(0,26)+"…":n};
@@ -402,7 +451,11 @@ function renderCart(){
   const discountedMonthly=applyPromoAmount(normalMonthly,eligible);
   const discountMoney=Math.max(0,normalMonthly-discountedMonthly);
   let summary="";
-  if(CART.length){summary+=customerPromoChooser();summary+=cartPaymentTable()}
+  if(CART.length){
+    summary+=customerPromoChooser();
+    summary+=cartPaymentTable();
+    summary+=`<div style="margin:14px 0 4px"><button type="button" class="secondary" style="width:100%;padding:12px 14px;font-weight:800" onclick="continueShopping()">＋ เลือกสินค้าต่อ</button></div>`;
+  }
   document.getElementById("cartSummary").innerHTML=summary;
 }
 function checkout(){
