@@ -159,11 +159,13 @@ function planName(o){return [o?.label,o?.service].filter(Boolean).join(" • ")}
 function months(o){return Number(o?.months)||(String(o?.label).includes("7")?84:60)}
 function firstPay(o){return Number(o?.firstPayment??o?.upfront??0)||0}
 function half(o){return Number(o?.halfCycles||0)}
-function payment(o,m){if(m===1&&firstPay(o)>0)return firstPay(o);if(m>=2&&m<=1+half(o))return Number(o.price||0)*.5;return Number(o.price||0)}
+function defaultBillingStart(pOrCat=""){const p=(pOrCat&&typeof pOrCat==="object")?pOrCat:null;const s=p?[p.category,p.cat,p.name,p.model].filter(Boolean).join(" "):String(pOrCat||"");return /(ทีวี|โทรทัศน์|oled|qned|nano(cell)?|smart\s*tv|\btv\b|จอมอนิเตอร์|มอนิเตอร์|monitor|ultrafine|ultragear|sound\s*bar|soundbar|ซาวด์บาร์|ลำโพง|speaker|xboom|life\s*style|lifestyle|standbyme|stanbyme|จอ\s*life)/i.test(s)?1:2}
+function billingStart(o,p=currentProduct){if(defaultBillingStart(p)===1)return 1;return Math.max(1,Math.min(2,Number(o?.startBilling)||2))}
+function payment(o,m,p=currentProduct){const start=billingStart(o,p);if(m<start)return 0;if(half(o)>0&&m>=start&&m<start+half(o))return Number(o.price||0)*.5;return Number(o.price||0)}
 function promoConfig(){const p=SITE_CONTENT?.promotion||DEFAULT_SITE_CONTENT.promotion||{};return {enabled:p.enabled!==false,minQty:Math.max(1,Number(p.minQty||2)),discountPercent:Math.max(0,Math.min(100,Number(p.discountPercent||0))),label:p.label||"โปรโมชั่นพิเศษ"}}
 function promoEligible(qty=CART.length){const p=promoConfig();return p.enabled&&p.discountPercent>0&&qty>=p.minQty}
 function applyPromoAmount(amount,eligible=promoEligible()){const p=promoConfig();return eligible?Number(amount||0)*(1-p.discountPercent/100):Number(amount||0)}
-function paymentPromo(o,m,eligible=promoEligible()){let a=payment(o,m);return m===1?a:applyPromoAmount(a,eligible)}
+function paymentPromo(o,m,eligible=promoEligible(),p=currentProduct){let a=payment(o,m,p),start=billingStart(o,p);if(!eligible||m<start)return a;const pct=promoConfig().discountPercent/100;if(m===start)return Math.max(0,a-((a+firstPay(o))*pct));return Math.max(0,a-(a*pct))}
 
 function canonicalModelKey(v){return String(v||"").trim().toUpperCase()}
 
@@ -319,12 +321,15 @@ function renderPlans(){const opts=currentProduct.options||[];const o=opts[curren
 function showSchedule(){
   const o=(currentProduct.options||[])[currentPlan];if(!o)return;
   const promo=promoConfig(), eligible=promoEligible();
-  let rows=[],M=months(o),normal=0,promoTotal=0;
-  for(let m=1;m<=M;m++){let a=payment(o,m),b=paymentPromo(o,m,eligible);normal+=a;promoTotal+=b;rows.push({m,a,b})}
-  let groups=[],s=1,sig=null;rows.forEach((r,i)=>{let sg=r.a+"|"+r.b;if(sig===null){sig=sg;s=r.m}else if(sg!==sig){let z=rows[i-1];groups.push({s,e:z.m,a:z.a,b:z.b});s=r.m;sig=sg}if(i===rows.length-1)groups.push({s,e:r.m,a:r.a,b:r.b})});
+  let rows=[],M=months(o),normal=firstPay(o),promoTotal=firstPay(o);
+  for(let m=1;m<=M;m++){let a=payment(o,m,currentProduct),b=paymentPromo(o,m,eligible,currentProduct);normal+=a;promoTotal+=b;rows.push({m,a,b})}
+  let groups=[],gs=1,sig=null;rows.forEach((r,i)=>{let sg=r.a+"|"+r.b;if(sig===null){sig=sg;gs=r.m}else if(sg!==sig){let z=rows[i-1];groups.push({s:gs,e:z.m,a:z.a,b:z.b});gs=r.m;sig=sg}if(i===rows.length-1)groups.push({s:gs,e:r.m,a:r.a,b:r.b})});
   const promoHead=eligible?`หลังลด ${money(promo.discountPercent)}%`:"ยอดปกติ";
-  const promoNote=eligible?`ตะกร้ามีครบ ${promo.minQty} เครื่องแล้ว ระบบหัก ${money(promo.discountPercent)}% ให้อัตโนมัติ (วันทำรายการไม่หักส่วนลด)`:`เมื่อมีสินค้าครบ ${promo.minQty} เครื่อง ระบบจะหัก ${money(promo.discountPercent)}% ให้อัตโนมัติ`;
-  document.getElementById("schedule").innerHTML=`<div class="info"><b>ตารางการชำระ</b><div class="sub">ราคาก่อนส่วนลดรวม ${money(normal)} บาท${eligible?` • หลังส่วนลด ${money(promo.discountPercent)}% รวม ${money(promoTotal)} บาท`:""}</div></div><table class="table"><thead><tr><th>งวด</th><th>ราคาก่อนส่วนลด</th><th>${promoHead}</th></tr></thead><tbody>${groups.map(g=>`<tr><td>${g.s===g.e?g.s:g.s+"–"+g.e}</td><td>${money(g.a)}</td><td><b>${money(g.b)}</b></td></tr>`).join("")}</tbody></table><div class="sub" style="margin-top:7px">* ${promoNote}</div>`
+  const start=billingStart(o,currentProduct);
+  const promoNote=eligible?`วันทำรายการชำระเต็ม ${money(firstPay(o))} บาท ไม่หักส่วนลดทันที และนำสิทธิ์ส่วนลดของวันทำรายการไปรวมปรับในงวดชำระที่ ${start}`:`เริ่มเรียกเก็บที่งวดชำระที่ ${start} • เมื่อมีสินค้าครบ ${promo.minQty} เครื่อง ระบบจะคำนวณตามเปอร์เซ็นต์โปรโมชั่นที่ Admin กำหนด`;
+  const upfront=firstPay(o)?`<tr><td><b>วันทำรายการ</b></td><td>${money(firstPay(o))}</td><td><b>${money(firstPay(o))}</b></td></tr>`:"";
+  const body=groups.map(g=>`<tr><td>${g.s===g.e?`งวดชำระที่ ${g.s}`:`งวดชำระที่ ${g.s}–${g.e}`}</td><td>${g.a?money(g.a):"ไม่มีการเรียกเก็บ"}</td><td><b>${g.b?money(g.b):"ไม่มีการเรียกเก็บ"}</b></td></tr>`).join("");
+  document.getElementById("schedule").innerHTML=`<div class="info"><b>ตารางการชำระ</b><div class="sub">วันทำรายการแยกจากงวดชำระ • รวมก่อนส่วนลด ${money(normal)} บาท${eligible?` • หลังโปรโมชั่น ${money(promoTotal)} บาท`:""}</div></div><table class="table"><thead><tr><th>รายการ</th><th>ราคาก่อนส่วนลด</th><th>${promoHead}</th></tr></thead><tbody>${upfront}${body}</tbody></table><div class="sub" style="margin-top:7px">* ${promoNote}</div>`;
 }
 function addCurrent(){const o=(currentProduct.options||[])[currentPlan];if(!o)return;CART.push({model:currentProduct.model,plan:currentPlan});saveCart();toggleCart(true)}
 function quickAdd(model){const p=PRODUCTS.find(x=>x.model===model);if(!p)return;CART.push({model,plan:lowestIndex(p)});saveCart();toggleCart(true)}
