@@ -419,7 +419,7 @@ function cartPaymentTable(){
   let contract=`<tr class="contractRow"><td>เงื่อนไขสัญญา</td>${items.map(x=>`<td>${planName(x.o)}</td>`).join("")}<td></td></tr>`;
   const upfrontVals=items.map(x=>firstPay(x.o));
   const upfrontTotal=upfrontVals.reduce((a,b)=>a+b,0);
-  let body=`<tr><td>วันที่ทำรายการ</td>${upfrontVals.map(v=>v?`<td><div class="normal">งวดที่ 1</div><div class="pay">${money(v)}</div><div class="upfrontLabel">ชำระวันทำรายการ</div></td>`:`<td><div class="dash">—</div></td>`).join("")}<td><div class="sum">${money(upfrontTotal)}<small>บาท</small></div></td></tr>`;
+  let body=`<tr><td>วันทำรายการ</td>${upfrontVals.map(v=>v?`<td><div class="normal">งวดที่ 1</div><div class="pay">${money(v)}</div><div class="upfrontLabel">ชำระวันทำรายการ</div></td>`:`<td><div class="dash">—</div></td>`).join("")}<td><div class="sum">${money(upfrontTotal)}<small>บาท</small></div></td></tr>`;
   body+=groups.map(g=>{const total=g.vals.reduce((a,v)=>a+v.b,0);const label=g.s===g.e?`เดือนที่ ${g.s}`:`เดือนที่ ${g.s} – ${g.e}`;return `<tr><td>${label}</td>${g.vals.map(v=>`<td>${cell(v,g.s)}</td>`).join("")}<td><div class="sum">${money(total)}<small>บาท</small></div></td></tr>`}).join("");
   const promoText=eligible?`รวมส่วนลด Combo`:`ยังไม่ถึงเงื่อนไขส่วนลด Combo`;
   return `<div class="cartPayWrap"><div class="cartPayTitle">ตารางชำระรายเดือน (ตะกร้า)</div><div class="cartPaySub">${CART.length} ชิ้น • ${items.length} รายการ • ${promoText}</div><div class="cartPayScroll"><table class="cartPayTable"><thead>${head}</thead><tbody>${contract}${body}</tbody></table></div></div>`;
