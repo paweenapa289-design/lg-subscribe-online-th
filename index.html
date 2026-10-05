@@ -192,11 +192,21 @@ function normalizePromoRules(p={},type=CUSTOMER_TYPE){let rules;if(type==="retur
 function promoConfig(qty=CART.length){const p=SITE_CONTENT?.promotion||DEFAULT_SITE_CONTENT.promotion||{},rules=normalizePromoRules(p,CUSTOMER_TYPE),q=Math.max(0,Number(qty||0));let chosen=null;for(const r of rules){if(q>=r.minQty)chosen=r}const first=rules[0]||{minQty:CUSTOMER_TYPE==="returning"?1:2,discountPercent:0};return {enabled:!!chosen,minQty:chosen?chosen.minQty:first.minQty,discountPercent:chosen?chosen.discountPercent:0,nextMinQty:chosen?null:first.minQty,rules,label:p.label||"โปรโมชั่นพิเศษ",customerType:CUSTOMER_TYPE}}
 function promoEligible(qty=CART.length){const p=promoConfig(qty);return p.discountPercent>0}
 function customerPromoChooser(){const promo=promoConfig(),eligible=promoEligible(),rules=promo.rules||[],first=rules[0];const typeText=CUSTOMER_TYPE==="returning"?"ลูกค้าเก่า":"ลูกค้าใหม่";let hint;if(eligible)hint=`ยินดีด้วย! ${typeText}ได้รับส่วนลด Combo ${money(promo.discountPercent)}%`;else if(first)hint=CUSTOMER_TYPE==="returning"?`ลูกค้าเก่า รับส่วนลดตั้งแต่เครื่องแรก`:`ลูกค้าใหม่ ซื้อครบ ${first.minQty} เครื่องขึ้นไป รับส่วนลด Combo`;else hint="ยังไม่มีโปรโมชั่นที่กำหนด";return `<div class="customerTypeBox"><div class="customerTypeTitle"><span>ส่วนลด Combo</span>${eligible?`<span class="customerTypeDiscount">-${money(promo.discountPercent)}%</span>`:""}</div><div class="customerTypeBtns"><button type="button" class="customerTypeBtn ${CUSTOMER_TYPE==="new"?"active":""}" onclick="setCustomerType('new')">ลูกค้าใหม่</button><button type="button" class="customerTypeBtn ${CUSTOMER_TYPE==="returning"?"active":""}" onclick="setCustomerType('returning')">ลูกค้าเก่า</button></div><div class="customerTypeHint">${hint}</div></div>`}
-function applyPromoAmount(amount,eligible=promoEligible()){const p=promoConfig();return eligible?Number(amount||0)*(1-p.discountPercent/100):Number(amount||0)}
+// โปรเฉพาะหมวดเครื่องกรองน้ำ: 20% (ไม่รวมตู้เย็นที่มีเครื่องกรองน้ำในตัว)
+function productPromoPercent(p,eligible=promoEligible()){
+  if(!eligible) return 0;
+  const cat=String(p?.cat||p?.category||"").trim();
+  if(cat==="เครื่องกรองน้ำ") return 20;
+  return Math.max(0,Number(promoConfig().discountPercent||0));
+}
+function applyPromoAmount(amount,eligible=promoEligible(),p=null){
+  const pct=p?productPromoPercent(p,eligible):Math.max(0,Number(promoConfig().discountPercent||0));
+  return eligible?Number(amount||0)*(1-pct/100):Number(amount||0);
+}
 function paymentPromo(o,m,eligible=promoEligible(),p=currentProduct){
   const a=Number(payment(o,m,p)||0);
   if(!eligible || a<=0) return a;
-  const pct=Math.max(0,Number(promoConfig().discountPercent||0))/100;
+  const pct=productPromoPercent(p,eligible)/100;
   if(pct<=0) return a;
   // วันทำรายการเก็บเต็ม ส่วนลดใช้เฉพาะยอดของงวดที่มีการเรียกเก็บนั้น
   return Math.max(0,a-(a*pct));
@@ -397,7 +407,7 @@ function renderCart(){
   const eligible=promoEligible();
   document.getElementById("cartItems").innerHTML=CART.map((c,i)=>{
     const p=PRODUCTS.find(x=>x.model===c.model), o=p?.options?.[c.plan];
-    const fp=firstPay(o), mp=Number(o?.price||0), discounted=applyPromoAmount(mp,eligible);
+    const fp=firstPay(o), mp=Number(o?.price||0), itemPct=productPromoPercent(p,eligible), discounted=applyPromoAmount(mp,eligible,p);
     let totalNormal=fp,totalPromo=fp;for(let m=1;m<=months(o);m++){totalNormal+=payment(o,m,p);totalPromo+=paymentPromo(o,m,eligible,p)}
     const cash=(p?.cashEnabled&&p?.cashPrice)?`<div class="sub" style="margin-top:4px"><b>ราคาเงินสด ${money(p.cashPrice)} บาท</b>${p.cashNote?` • ${p.cashNote}`:""}</div>`:"";
     const src=String(p?.img||p?.image||(Array.isArray(p?.gallery)&&p.gallery[0])||"").trim();
@@ -406,7 +416,7 @@ function renderCart(){
       ${fp?`<div style="margin-top:8px"><span class="badge">วันทำรายการ</span> <b>${money(fp)} บาท</b></div>`:""}
       <div style="margin-top:6px"><span class="badge">ราคาสินค้ารายเดือน</span> <b style="font-size:20px;color:#d71920">${money(mp)} บาท/เดือน</b></div>
       <div class="sub" style="font-size:11px;margin-top:2px">ราคาก่อนส่วนลดโปรโมชั่น</div>
-      ${eligible?`<div style="margin-top:5px"><b style="color:#167a3f">หลังลด ${money(promo.discountPercent)}% เหลือ ${money(discounted)} บาท/เดือน</b></div>`:(promo.rules?.length?`<div class="sub" style="margin-top:4px">ซื้อครบ ${promo.rules[0].minQty} เครื่อง รับส่วนลด ${money(promo.rules[0].discountPercent)}% อัตโนมัติ</div>`:``)}
+      ${eligible?`<div style="margin-top:5px"><b style="color:#167a3f">หลังลด ${money(itemPct)}% เหลือ ${money(discounted)} บาท/เดือน</b></div>`:(promo.rules?.length?`<div class="sub" style="margin-top:4px">ซื้อครบ ${promo.rules[0].minQty} เครื่อง รับส่วนลด ${money(promo.rules[0].discountPercent)}% อัตโนมัติ</div>`:``)}
       <div class="sub">${months(o)} งวด${half(o)?` • โปร 50% ${half(o)} งวด`:""}</div>
       ${cash}
       <details class="contractTotalToggle"><summary>ดูราคารวมตลอดสัญญา ▾</summary><div class="contractTotalBox">รวมก่อนส่วนลด <b>${money(totalNormal)} บาท</b>${eligible?`<br>รวมหลังโปรโมชั่น <b>${money(totalPromo)} บาท</b>`:""}</div></details>
