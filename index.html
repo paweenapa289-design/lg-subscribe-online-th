@@ -197,8 +197,14 @@ function customerPromoChooser(){const promo=promoConfig(),eligible=promoEligible
 function productPromoPercent(p,eligible=promoEligible()){
   if(!eligible) return 0;
   const cat=String(p?.cat||p?.category||"").trim();
+  // เครื่องกรองน้ำแท้ลด 20% (ตู้เย็นที่มีเครื่องกรองน้ำยังอยู่หมวดตู้เย็น จึงไม่เข้าเงื่อนไขนี้)
   if(cat==="เครื่องกรองน้ำ") return 20;
-  return Math.max(0,Number(promoConfig().discountPercent||0));
+  // หน้ารายละเอียดสินค้าให้แสดงโปรเครื่องใช้ไฟฟ้าตามเปอร์เซ็นต์ที่ Admin ตั้งไว้
+  // แม้ยังไม่ได้ใส่สินค้าในตะกร้า เพื่อไม่ให้ตารางชำระแสดงยอดปกติชั่วคราว
+  const cfg=promoConfig();
+  if(Number(cfg.discountPercent||0)>0) return Math.max(0,Number(cfg.discountPercent||0));
+  const rules=normalizePromoRules(SITE_CONTENT?.promotion||DEFAULT_SITE_CONTENT.promotion||{},CUSTOMER_TYPE);
+  return rules.length?Math.max(...rules.map(r=>Number(r.discountPercent||0))):0;
 }
 function applyPromoAmount(amount,eligible=promoEligible(),p=null){
   const pct=p?productPromoPercent(p,eligible):Math.max(0,Number(promoConfig().discountPercent||0));
@@ -366,7 +372,9 @@ function closeDetail(){document.getElementById("overlay").classList.remove("show
 function renderPlans(){const opts=currentProduct.options||[];const o=opts[currentPlan];document.getElementById("plans").innerHTML=opts.map((x,i)=>`<div class="plan ${i===currentPlan?"active":""}" onclick="currentPlan=${i};renderPlans()"><b>${planName(x)}</b><div class="sub">${money(x.price)} บาท/เดือน • ${months(x)} งวด${firstPay(x)?` • วันทำรายการ ${money(firstPay(x))} บาท`:""}</div></div>`).join("");document.getElementById("dPrice").textContent=o?money(o.price)+" บาท/เดือน":"สอบถามราคา";document.getElementById("dSub").innerHTML=o?planName(o)+(currentProduct.cashEnabled&&currentProduct.cashPrice?`<br><b style="color:#111">ราคาเงินสด ${money(currentProduct.cashPrice)} บาท</b>${currentProduct.cashNote?` • ${currentProduct.cashNote}`:""}`:""):""}
 function showSchedule(){
   const o=(currentProduct.options||[])[currentPlan];if(!o)return;
-  const promo=promoConfig(), eligible=promoEligible();
+  const promo=promoConfig();
+  // ตารางของสินค้ารายชิ้นต้องแสดงส่วนลดปัจจุบันทันที ไม่ผูกกับจำนวนสินค้าในตะกร้า
+  const eligible=productPromoPercent(currentProduct,true)>0;
   let rows=[],M=months(o),normal=firstPay(o),promoTotal=firstPay(o);
   for(let m=1;m<=M;m++){let a=payment(o,m,currentProduct),b=paymentPromo(o,m,eligible,currentProduct);normal+=a;promoTotal+=b;rows.push({m,a,b})}
   let groups=[],gs=1,sig=null;rows.forEach((r,i)=>{let sg=r.a+"|"+r.b;if(sig===null){sig=sg;gs=r.m}else if(sg!==sig){let z=rows[i-1];groups.push({s:gs,e:z.m,a:z.a,b:z.b});gs=r.m;sig=sg}if(i===rows.length-1)groups.push({s:gs,e:r.m,a:r.a,b:r.b})});
